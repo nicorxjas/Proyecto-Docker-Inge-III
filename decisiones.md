@@ -8,6 +8,7 @@ Usamos un build multi-etapa para mantener la imagen final liviana y segura.
 - node:18-alpine para compilar el proyecto React + Vite porque es una imagen optimizada y con soporte LTS. Como compila y ya está, no necesitamos que sea el mismo que el del back.
 - Para servir los archivos estáticos elegimos nginx:alpine por su bajo consumo de recursos y alta performance.
 - npm ci para asegurar builds reproducibles y confiables.
+
 Con esta estructura, cualquier cambio en el código vuelve a compilar el proyecto sin reinstalar dependencias innecesarias.
 Docker construye imágenes en capas. Cada instrucción (COPY, RUN, etc.) crea una capa. Estas capas se guardan en caché para no volver a ejecutarlas si nada cambió en los archivos involucrados.
 Por eso, copiamos primero solo package.json y package-lock.json y luego hacemos RUN npm ci. Así, si modifico cualquier archivo de mi código fuente, Docker NO reinstala todas las dependencias, porque la capa que instala npm ci todavía está en caché.
