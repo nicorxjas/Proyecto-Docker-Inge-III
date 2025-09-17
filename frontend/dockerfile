@@ -1,0 +1,28 @@
+## Etapa de build: usamos Node para compilar el frontend
+FROM node:18-alpine AS build
+
+# Creamos un directorio de trabajo en la imagen
+WORKDIR /app
+
+# Copiamos package.json y lock para aprovechar el cache de Docker
+COPY package*.json ./
+
+# Instalamos dependencias
+RUN npm ci
+
+# Copiamos el resto del código
+COPY . .
+
+# Ejecutamos el build de producción de Vite
+RUN npm run build
+
+## Etapa de producción: usamos Nginx para servir los archivos estáticos
+FROM nginx:alpine
+
+# Copiamos el build generado por Vite a la carpeta donde Nginx sirve contenido
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Exponemos el puerto en el que corre Nginx
+EXPOSE 80
+
+# Nginx se ejecuta como entrypoint por defecto
