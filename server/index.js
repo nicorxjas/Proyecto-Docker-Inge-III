@@ -19,16 +19,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// 👉 Servir frontend
+const staticDir = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(staticDir));
+
 // Rutas API
 const productRoutes = require('../routes/products');
 app.use('/products', productRoutes);
 
 // Healthcheck
 app.get('/health', (req, res) => res.status(200).send('OK'));
-
-// 👉 Servir frontend
-const staticDir = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(staticDir));
 
 // Fallback SPA (React Router)
 app.get('*', (req, res) => {
