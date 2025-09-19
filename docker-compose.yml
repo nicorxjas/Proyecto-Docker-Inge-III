@@ -18,8 +18,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "3306:3306"
+    # No es necesario exponer 3306 al host, las apps se conectan por red interna
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-mini-bi-pass}"]
       interval: 10s
@@ -28,10 +27,10 @@ services:
       start_period: 20s
 
   app-qa:
-    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
     container_name: mini-bi-app-qa
     depends_on:
       db:
@@ -46,10 +45,10 @@ services:
       - "3001:${QA_API_PORT:-3000}"
 
   app-prod:
-    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
     container_name: mini-bi-app-prod
     depends_on:
       db:
