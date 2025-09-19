@@ -20,6 +20,7 @@ app.use((req, res, next) => {
   next();
 });
 
+
 // 👉 Servir frontend (si el build existe)
 const staticDir = path.join(__dirname, '..', 'frontend', 'dist');
 const indexHtmlPath = path.join(staticDir, 'index.html');
@@ -30,6 +31,7 @@ if (hasFrontendBuild) {
 } else {
   console.warn('⚠️  Build del frontend no encontrado. Solo se servirá la API.');
 }
+
 
 // Rutas API
 const productRoutes = require('../routes/products');
