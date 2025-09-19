@@ -42,7 +42,7 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // Fallback SPA (React Router)
 if (hasFrontendBuild) {
-  app.get('/*', (req, res) => {
+  app.get('*', (req, res) => {
     res.sendFile(indexHtmlPath);
   });
 }
