@@ -28,6 +28,8 @@ RUN npm ci --omit=dev
 COPY server ./server
 COPY routes ./routes
 COPY db ./db
+COPY etl ./etl
+COPY scripts ./scripts
 
 # Copiamos el build del frontend desde la etapa 1
 COPY --from=build-frontend /app/frontend/dist ./frontend/dist

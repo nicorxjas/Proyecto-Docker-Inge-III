@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.API_PORT || 3000;
@@ -19,6 +20,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// 👉 Servir frontend (si el build existe)
+const staticDir = path.join(__dirname, '..', 'frontend', 'dist');
+const indexHtmlPath = path.join(staticDir, 'index.html');
+const hasFrontendBuild = fs.existsSync(indexHtmlPath);
+
+if (hasFrontendBuild) {
+  app.use(express.static(staticDir));
+} else {
+  console.warn('⚠️  Build del frontend no encontrado. Solo se servirá la API.');
+}
+
 // Rutas API
 const productRoutes = require('../routes/products');
 app.use('/products', productRoutes);
@@ -26,14 +38,12 @@ app.use('/products', productRoutes);
 // Healthcheck
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// 👉 Servir frontend
-const staticDir = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(staticDir));
-
 // Fallback SPA (React Router)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(staticDir, 'index.html'));
-});
+if (hasFrontendBuild) {
+  app.get('/*', (req, res) => {
+    res.sendFile(indexHtmlPath);
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor (${APP_ENV}, log=${LOG_LEVEL}) escuchando en http://localhost:${PORT}`);
