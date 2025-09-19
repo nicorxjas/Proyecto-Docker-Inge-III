@@ -4,19 +4,22 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server/index.js",
+    "etl": "node etl/fetchAndLoad.js",
+    "start:with-etl": "node scripts/startWithEtl.js",
+    "test": "echo \"No hay tests definidos\""
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nicxrxjas/Mini-BI.git"
+    "url": "git+https://github.com/tu-usuario/Proyecto-Docker-Inge-III.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/nicxrxjas/Mini-BI/issues"
+    "url": "https://github.com/tu-usuario/Proyecto-Docker-Inge-III/issues"
   },
-  "homepage": "https://github.com/nicxrxjas/Mini-BI#readme",
+  "homepage": "https://github.com/tu-usuario/Proyecto-Docker-Inge-III#readme",
   "dependencies": {
     "axios": "^1.9.0",
     "cors": "^2.8.5",

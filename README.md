@@ -1,148 +1,137 @@
-# Mini-BI - Auditoría End-to-End y Documentación
+# Mini-BI containerizado
 
-## Arquitectura General
+Mini-BI es una API REST construida con **Node.js + Express + Knex + MySQL** que expone indicadores de productos y un script ETL que inicializa la base con datos de Fake Store API. Este repositorio contiene todo lo necesario para ejecutar la aplicación en contenedores Docker y levantar entornos diferenciados de QA y PROD usando la **misma imagen**.
 
-**Backend (Node.js + Express + Knex + MySQL):**
-- API RESTful en `server/index.js` usando Express.
-- Conexión a MySQL con Knex (`db/connection.js`).
-- ETL (`etl/fetchAndLoad.js`) para extraer, transformar y cargar datos en la tabla `products`.
-- Rutas en `routes/products.js` para consultar productos y resúmenes por categoría.
+## Estructura del repositorio
 
-**Frontend (React + Vite):**
-- Ubicado en `frontend/src`, con componentes para tablas y gráficos.
-- Los gráficos (ej. `CategoryDonutChart.jsx`).
+```
+.
+├── db/                   # Configuración de Knex y conexión a MySQL
+├── docker/
+│   └── mysql/init.sql    # Script para crear las bases QA/PROD
+├── docker-compose.yml    # Orquestación de QA, PROD y DB
+├── etl/                  # Script ETL para poblar la base
+├── frontend/             # Dashboard React (referencia)
+├── routes/               # Endpoints de Express
+├── scripts/              # Utilidades para levantar la app en contenedor
+├── server/               # Servidor Express
+├── Dockerfile            # Imagen de la API/ETL
+├── decisiones.md         # Justificación de decisiones
+├── .env.example          # Variables de entorno esperadas
+└── README.md             # Este archivo
+```
 
----
+## Prerrequisitos
 
-## Flujo de Datos
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) o Docker Engine 24+
+- [Docker Compose](https://docs.docker.com/compose/) v2 (incluido en Docker Desktop)
+- Cuenta en [Docker Hub](https://hub.docker.com/) para publicar la imagen
 
-1. **Carga de datos (ETL):**
-	- Ejecuta el script ETL para poblar la base de datos con productos.
-	- Los datos se almacenan en la tabla `products`.
+## Variables de entorno
 
-2. **API REST:**
-	- Endpoints principales:
-	  - `/products` (todos los productos)
-	  - `/products/categories` (resumen por categoría)
-	  - `/products/price-by-category` (total de precios por categoría)
+Copia `.env.example` a `.env` y ajusta los valores según tus necesidades:
 
-3. **Consumo en el Frontend:**
-	- El frontend debe realizar peticiones HTTP (fetch/axios) a estos endpoints para obtener los datos y alimentar los gráficos.
-	- Actualmente, los componentes usan datos estáticos, pero pueden adaptarse fácilmente para consumir datos dinámicos desde la API.
+```bash
+cp .env.example .env
+```
 
----
+Variables principales:
 
-## Recomendaciones y Futuro
+| Variable                | Descripción                                                             |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `DOCKERHUB_USER`        | Usuario de Docker Hub utilizado para etiquetar la imagen                |
+| `IMAGE_NAME`            | Nombre base de la imagen                                                |
+| `DB_PASSWORD`           | Contraseña del usuario root en MySQL                                    |
+| `QA_DB_NAME` / `PROD_DB_NAME` | Nombres de las bases de datos para cada entorno                    |
+| `QA_API_PORT` / `PROD_API_PORT` | Puerto interno que expone Express (se publica como 3001/3002) |
+| `QA_LOG_LEVEL` / `PROD_LOG_LEVEL` | Nivel de log deseado por entorno                            |
 
-- **Integración Dinámica:** Modificar los componentes del frontend para consumir datos reales desde la API usando `fetch` o `axios`.
-- **Seguridad:** No exponer credenciales sensibles en el código (usar variables de entorno).
-- **Escalabilidad:** Modularizar aún más el ETL y las rutas para soportar nuevos tipos de datos y visualizaciones.
-- **Documentación:** Mantener actualizado el README con instrucciones de instalación, uso y arquitectura.
+> El resto de variables controlan los tiempos de espera del contenedor hasta que la base esté disponible.
 
----
+## Construir la imagen de la aplicación
 
-## Instalación y Uso Rápido
+La imagen contiene la API y el script ETL. Se recomienda etiquetar una versión de desarrollo y una estable:
 
-1. Instala dependencias en backend y frontend:
-	```sh
-	cd Web-Dashboard
-	npm install
-	cd frontend
-	npm install
-	```
-2. Configura la base de datos MySQL y credenciales en `.env`.
-3. Ejecuta el ETL:
-	```sh
-	node etl/fetchAndLoad.js
-	```
-4. Inicia el servidor backend:
-	```sh
-	node server/index.js
-	```
-5. Inicia el frontend:
-	```sh
-	npm run dev
-	```
+```bash
+# Build de desarrollo
+DOCKERHUB_USER=tu-usuario IMAGE_NAME=mini-bi \
+docker build -t "$DOCKERHUB_USER/$IMAGE_NAME:dev" .
 
----
+# Etiqueta estable v1.0
+docker tag "$DOCKERHUB_USER/$IMAGE_NAME:dev" "$DOCKERHUB_USER/$IMAGE_NAME:v1.0"
+```
 
-## Contacto y Contribución
+### Publicar la imagen en Docker Hub
 
-Para dudas, sugerencias o contribuciones, abre un issue o pull request.
+```bash
+docker login
 
----
+docker push "$DOCKERHUB_USER/$IMAGE_NAME:dev"
+docker push "$DOCKERHUB_USER/$IMAGE_NAME:v1.0"
+```
 
-## Instrucciones Detalladas para CODEX: Consumo de Datos Reales y Variables de Entorno
+## Levantar QA y PROD con docker-compose
 
-### 1. Uso de Variables de Entorno
+```bash
+# Construye (si no existe) y levanta los contenedores en segundo plano
+docker compose up -d --build
 
-1. Instala el paquete `dotenv` en el backend:
-	```sh
-	npm install dotenv
-	```
-2. Crea un archivo `.env` en la raíz del proyecto con el siguiente contenido (ajusta según tu configuración):
-	```env
-	DB_HOST=localhost
-	DB_USER=root
-	DB_PASSWORD=TU_PASSWORD
-	DB_NAME=MINIBM
-	API_PORT=3000
-	```
-3. Modifica `db/connection.js` para leer las variables de entorno:
-	```js
-	require('dotenv').config();
-	const knex = require('knex');
-	const db = knex({
-	  client: 'mysql2',
-	  connection: {
-		 host: process.env.DB_HOST,
-		 user: process.env.DB_USER,
-		 password: process.env.DB_PASSWORD,
-		 database: process.env.DB_NAME,
-	  }
-	});
-	module.exports = db;
-	```
-4. Modifica `server/index.js` para usar el puerto de la variable de entorno:
-	```js
-	const PORT = process.env.API_PORT || 3000;
-	```
+# Ver logs en vivo
+docker compose logs -f app-qa app-prod
+```
 
-### 2. Consumo de Datos Reales en los Gráficos del Frontend
+Servicios expuestos:
 
-1. Instala `axios` en el frontend:
-	```sh
-	cd frontend
-	npm install axios
-	```
-2. Modifica el componente de gráfico (ejemplo: `CategoryDonutChart.jsx`) para consumir datos reales:
-	- Reemplaza los datos mockeados por una llamada a la API usando `axios` y React hooks (`useEffect`, `useState`).
-	- Ejemplo:
-	```jsx
-	import { useEffect, useState } from 'react';
-	import axios from 'axios';
-	// ...importaciones de recharts y otros...
+| Servicio  | URL                      | Descripción                                    |
+| --------- | ------------------------ | ---------------------------------------------- |
+| QA        | http://localhost:3001    | API QA (carga datos automáticamente con ETL)   |
+| PROD      | http://localhost:3002    | API PROD (requiere carga manual inicial)       |
+| Base de datos | localhost:3306 (MySQL) | Usuario `root`, contraseña `DB_PASSWORD`     |
 
-	const CategoryDonutChart = () => {
-	  const [data, setData] = useState([]);
-	  useEffect(() => {
-		 axios.get('http://localhost:3000/products/categories')
-			.then(res => setData(res.data))
-			.catch(err => console.error(err));
-	  }, []);
-	  // ...renderizado del gráfico usando 'data'...
-	};
-	```
-	- Adapta el renderizado del gráfico para usar la estructura de datos recibida desde la API.
+### Verificar la aplicación
 
-3. Si necesitas consumir otros endpoints (ej. precios por categoría), repite el proceso cambiando la URL.
+1. **Consultar productos (QA):** `curl http://localhost:3001/products`
+2. **Resumen por categoría (QA):** `curl http://localhost:3001/products/categories`
+3. **Conexión a la base:**
+   ```bash
+   mysql -h 127.0.0.1 -P 3306 -u root -p$DB_PASSWORD -e "USE mini_bi_qa; SELECT COUNT(*) FROM products;"
+   ```
+4. **Persistencia:** reinicia los servicios (`docker compose restart app-qa`) y vuelve a consultar; los datos permanecen gracias al volumen `db_data`.
 
-### 3. Buenas Prácticas
+Si deseás cargar datos iniciales en PROD, ejecutá el ETL manualmente dentro del contenedor:
 
-- No subir el archivo `.env` al repositorio (agrega a `.gitignore`).
-- Documenta los endpoints y la estructura esperada de los datos en el README.
-- Usa variables de entorno también en el frontend si usas Vite (prefijo `VITE_`).
+```bash
+docker compose exec app-prod npm run etl
+```
 
----
+## Desarrollo local sin Docker
 
-**Con estas instrucciones, CODEX podrá adaptar el proyecto para consumir datos reales en los gráficos y mejorar la seguridad usando variables de entorno.**
+1. Instala dependencias:
+   ```bash
+   npm install
+   ```
+2. Define un archivo `.env` con credenciales de MySQL locales.
+3. Ejecuta el ETL y el servidor:
+   ```bash
+   npm run etl
+   npm start
+   ```
+
+## Publicación y versiones
+
+- `:dev`: imagen de trabajo utilizada para validaciones locales y pruebas.
+- `:v1.0`: versión estable promovida una vez validados QA y PROD. El `docker-compose.yml` consume esta etiqueta para asegurar reproducibilidad.
+
+Actualizá el tag estable cada vez que publiques una nueva versión lista para despliegue (por ejemplo `v1.1`, `v2.0`, etc.).
+
+## Evidencias sugeridas
+
+Guarda en `evidencias/` capturas de los contenedores en ejecución, respuestas de la API y logs de conexión a la base. Referencia estas evidencias desde `decisiones.md` para demostrar el funcionamiento.
+
+## Soporte y contribución
+
+1. Forkea el repositorio.
+2. Crea una rama con tu feature/fix.
+3. Envía un Pull Request describiendo los cambios.
+
+Para dudas o mejoras, abrí un issue en el repositorio.

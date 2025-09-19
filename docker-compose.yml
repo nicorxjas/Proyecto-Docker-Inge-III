@@ -1,0 +1,68 @@
+version: "3.9"
+
+x-app-environment: &default-app-env
+  DB_HOST: db
+  DB_PORT: ${DB_PORT:-3306}
+  DB_USER: ${DB_USER:-root}
+  DB_PASSWORD: ${DB_PASSWORD:-mini-bi-pass}
+  DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-40}
+  DB_WAIT_DELAY: ${DB_WAIT_DELAY:-3000}
+
+services:
+  db:
+    image: mysql:8.4
+    container_name: mini-bi-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-mini-bi-pass}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-mini-bi-pass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  app-qa:
+    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mini-bi-app-qa
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *default-app-env
+      APP_ENV: qa
+      API_PORT: ${QA_API_PORT:-3000}
+      DB_NAME: ${QA_DB_NAME:-mini_bi_qa}
+      LOG_LEVEL: ${QA_LOG_LEVEL:-debug}
+    ports:
+      - "3001:${QA_API_PORT:-3000}"
+
+  app-prod:
+    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mini-bi-app-prod
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *default-app-env
+      APP_ENV: prod
+      API_PORT: ${PROD_API_PORT:-3000}
+      DB_NAME: ${PROD_DB_NAME:-mini_bi_prod}
+      LOG_LEVEL: ${PROD_LOG_LEVEL:-warn}
+      SKIP_ETL: "true"
+    ports:
+      - "3002:${PROD_API_PORT:-3000}"
+
+volumes:
+  db_data:
