@@ -8,9 +8,15 @@ router.get('/', async (req, res) => {
     const products = await db.select('*').from('products');
     res.json(products);
   } catch (err) {
-    console.error('Error al obtener productos:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
+  console.error('Error al obtener productos:', {
+    message: err.message,
+    code: err.code,
+    errno: err.errno,
+    sqlState: err.sqlState,
+    sqlMessage: err.sqlMessage
+  });
+  res.status(500).json({ error: 'Error interno del servidor' });
+}
 });
 
 // 🟡 GET /products/categories → resumen por categoría
@@ -23,9 +29,15 @@ router.get('/categories', async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    console.error('Error al obtener resumen de categorías:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
+  console.error('Error al obtener productos:', {
+    message: err.message,
+    code: err.code,
+    errno: err.errno,
+    sqlState: err.sqlState,
+    sqlMessage: err.sqlMessage
+  });
+  res.status(500).json({ error: 'Error interno del servidor' });
+}
 });
 
 // 🟢 GET /products/price-by-category → total de precios por categoría
