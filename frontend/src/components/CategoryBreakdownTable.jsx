@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import apiClient from '../services/apiClient';
 import * as Tooltip from '@radix-ui/react-tooltip';
 
 const CategoryTable = () => {
@@ -8,8 +8,8 @@ const CategoryTable = () => {
   const [hoveredColumn, setHoveredColumn] = useState(null);
 
   useEffect(() => {
-    axios
-      .get('http://localhost:3000/products/categories/summary')
+    apiClient
+      .get('/products/categories/summary')
       .then((res) => setCategories(res.data))
       .catch((err) => console.error('Error al cargar categorías:', err));
   }, []);

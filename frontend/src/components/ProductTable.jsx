@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import apiClient from '../services/apiClient';
 import * as Tooltip from '@radix-ui/react-tooltip';
 
 const ProductTable = () => {
@@ -11,8 +11,8 @@ const ProductTable = () => {
     const itemsPerPage = 5;
 
     useEffect(() => {
-        axios
-            .get('http://localhost:3000/products')
+        apiClient
+            .get('/products')
             .then((res) => setProducts(res.data))
             .catch((err) => console.error('Error al cargar productos:', err));
     }, []);

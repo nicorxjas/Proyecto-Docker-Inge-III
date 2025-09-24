@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import apiClient from '../services/apiClient';
 import { PieChart, Pie, Cell } from 'recharts';
 import { FaLaptop, FaGem, FaMale, FaFemale, FaBox } from 'react-icons/fa';
 
@@ -22,8 +22,8 @@ const CategoryDonutChart = () => {
   const [data, setData] = useState([]);
 
   useEffect(() => {
-    axios
-      .get('http://localhost:3000/products/categories')
+    apiClient
+      .get('/products/categories')
       .then((res) => {
         const mapped = res.data.map((item, idx) => ({
           name: item.category,

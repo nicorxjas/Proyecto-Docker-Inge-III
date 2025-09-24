@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import apiClient from '../services/apiClient';
 
 const capitalizeWords = (str) =>
   str.replace(/\b\w/g, (char) => char.toUpperCase());
@@ -8,8 +8,8 @@ const CategoryCards = () => {
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    axios
-      .get('http://localhost:3000/products/categories')
+    apiClient
+      .get('/products/categories')
       .then((res) => setCategories(res.data))
       .catch((err) => console.error('Error al cargar categorías:', err));
   }, []);
