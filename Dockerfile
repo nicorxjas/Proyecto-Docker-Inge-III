@@ -1,41 +1,43 @@
-# ----------------------
-# Etapa 1: Build frontend
-# ----------------------
-FROM node:18-alpine AS build-frontend
-
+# Stage 1: construir el frontend de React con Vite.
+# Se aísla la compilación para que las dependencias de build no lleguen a la imagen final.
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 
-# Copiamos TODO el código del frontend (incluye vite.config.js, configs, src, etc.)
-COPY frontend/ ./
-
-# Instalamos dependencias y compilamos
+# Instalar dependencias del frontend usando los manifiestos.
+COPY frontend/package*.json ./
 RUN npm ci
+
+# Copiar el resto del código del frontend y generar la carpeta dist/.
+COPY frontend/ ./
 RUN npm run build
 
+# Stage 2: imagen final del backend + estáticos compilados.
+# Este stage es el que se ejecutará en QA/PROD.
+FROM node:20-alpine AS backend
+WORKDIR /usr/src/app
 
-# ----------------------
-# Etapa 2: Backend + servir estáticos
-# ----------------------
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Copiamos dependencias del backend
-COPY package*.json ./
+# Instalar únicamente las dependencias necesarias para ejecutar el backend.
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Copiamos el código del backend
+# Copiar el código fuente del backend.
 COPY server ./server
 COPY routes ./routes
 COPY db ./db
 COPY etl ./etl
-COPY scripts ./scripts
+COPY config ./config
+COPY README.md ./README.md
 
-# Copiamos el build del frontend desde la etapa 1
-COPY --from=build-frontend /app/frontend/dist ./frontend/dist
+# Copiar los archivos estáticos ya construidos del stage anterior.
+# Express sirve este directorio (frontend/dist) como archivos públicos.
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-ENV API_PORT=3000 APP_ENV=prod LOG_LEVEL=info
+# Variables de entorno por defecto. La API y el frontend se exponen juntos en este puerto.
+ENV NODE_ENV=production \
+    API_PORT=3000
 
+# La aplicación (API + estáticos) escucha en el puerto 3000 dentro del contenedor.
 EXPOSE 3000
 
-CMD ["node", "server/index.js"]
+# Ejecutar el backend, que también entrega el frontend generado en dist/.
+CMD ["npm", "start"]

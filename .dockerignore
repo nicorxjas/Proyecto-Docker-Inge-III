@@ -1,11 +1,9 @@
 node_modules
-frontend/node_modules
-npm-debug.log
-Dockerfile
-.dockerignore
 .git
-.gitignore
-evidencias
+Dockerfile
+npm-debug.log
 .env
-.env.*
-README.md
+.idea
+.vscode
+db/data
+coverage

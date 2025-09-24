@@ -1,67 +1,65 @@
-version: "3.9"
+version: '3.9'
 
-x-app-environment: &default-app-env
-  DB_HOST: db
-  DB_PORT: ${DB_PORT:-3306}
-  DB_USER: ${DB_USER:-root}
-  DB_PASSWORD: ${DB_PASSWORD:-mini-bi-pass}
-  DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-40}
-  DB_WAIT_DELAY: ${DB_WAIT_DELAY:-3000}
+x-app-image: &app_image mini-bi-app:v1.0
+x-app-environment: &app_environment
+  API_PORT: 3000
+  RUN_ETL_ON_BOOT: 'true'
+  FAIL_ON_ETL_ERROR: 'true'
+  DB_HOST: database
+  DB_USER: root
+  DB_PASSWORD: supersecret
 
 services:
-  db:
-    image: mysql:8.4
-    container_name: mini-bi-db
-    restart: unless-stopped
+  database:
+    image: mysql:8.0
+    container_name: mini-bi-mysql
+    command: --default-authentication-plugin=mysql_native_password --log-bin-trust-function-creators=1
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-mini-bi-pass}
+      MYSQL_ROOT_PASSWORD: supersecret
+    ports:
+      - '3307:3306'
     volumes:
-      - db_data:/var/lib/mysql
-      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    # No es necesario exponer 3306 al host, las apps se conectan por red interna
+      - mysql_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-mini-bi-pass}"]
-      interval: 10s
+      test: ['CMD-SHELL', 'mysqladmin ping -h localhost -psupersecret']
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 10s
 
   app-qa:
+    image: *app_image
     build:
       context: .
-      dockerfile: Dockerfile
-    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
-    container_name: mini-bi-app-qa
-    depends_on:
-      db:
-        condition: service_healthy
+      dockerfile: Dockerfile # Multi-stage: compila frontend y empaqueta backend en una sola imagen
     environment:
-      <<: *default-app-env
+      <<: *app_environment
       APP_ENV: qa
-      API_PORT: ${QA_API_PORT:-3000}
-      DB_NAME: ${QA_DB_NAME:-mini_bi_qa}
-      LOG_LEVEL: ${QA_LOG_LEVEL:-debug}
+      LOG_LEVEL: debug
+      DB_NAME: dashboard_qa
+    depends_on:
+      database:
+        condition: service_healthy
     ports:
-      - "3001:${QA_API_PORT:-3000}"
+      - '3001:3000'
 
   app-prod:
+    image: *app_image
     build:
       context: .
-      dockerfile: Dockerfile
-    image: ${DOCKERHUB_USER:-local}/${IMAGE_NAME:-mini-bi}:v1.0
-    container_name: mini-bi-app-prod
-    depends_on:
-      db:
-        condition: service_healthy
+      dockerfile: Dockerfile # Multi-stage: compila frontend y empaqueta backend en una sola imagen
     environment:
-      <<: *default-app-env
+      <<: *app_environment
       APP_ENV: prod
-      API_PORT: ${PROD_API_PORT:-3000}
-      DB_NAME: ${PROD_DB_NAME:-mini_bi_prod}
-      LOG_LEVEL: ${PROD_LOG_LEVEL:-warn}
-      SKIP_ETL: "true"
+      LOG_LEVEL: warn
+      DB_NAME: dashboard_prod
+    depends_on:
+      database:
+        condition: service_healthy
     ports:
-      - "3002:${PROD_API_PORT:-3000}"
+      - '3002:3000'
 
 volumes:
-  db_data:
+  mysql_data:
+    driver: local
