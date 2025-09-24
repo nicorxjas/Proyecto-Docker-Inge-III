@@ -1,68 +1,52 @@
-# Decisiones de arquitectura y operación
+# Decisiones de Arquitectura y Dockerización
 
-## Aplicación elegida
-Seleccionamos **Mini-BI**, una API REST en Node.js + Express que ya incluye lógica de negocio, script ETL y un dashboard React como referencia. Esta combinación nos permite demostrar un flujo completo de backend + datos sin tener que implementar funcionalidades desde cero. La API expone consultas agregadas sobre productos y el ETL descarga información desde Fake Store API para poblar la base.
+## 1. Panorama general del alcance
+- Se analizó la estructura completa del repositorio (`frontend/`, `server/`, `routes/`, `db/`, `etl/`, `config/`, `docs/`) para determinar cómo empaquetar una solución ejecutable end-to-end.
+- Se optó por entregar una única imagen capaz de servir la API de Node/Express y los assets del frontend ya compilado, eliminando la necesidad de administrar dos contenedores separados para QA/PROD.
+- Se mantuvieron fuera de la imagen final únicamente los archivos de soporte (por ejemplo `docs/`) que no son necesarios en tiempo de ejecución.
 
-### Stack tecnológico
-- **Runtime:** Node.js 20 (imagen `node:20-alpine`).
-- **Framework:** Express 5 con Knex como ORM ligero.
-- **Base de datos:** MySQL 8 en contenedor.
-- **Cliente opcional:** React + Vite (se mantiene en el repositorio como referencia visual).
+## 2. Construcción de la imagen (Dockerfile)
+- Se eligió `node:20-alpine` como base para ambos stages por ser la versión LTS más reciente y ofrecer un runtime ligero.
+- Se definió un build multi-stage:
+  - **Stage `frontend-builder`**: instala dependencias con `npm ci`, compila el dashboard de Vite y deja los estáticos en `dist/`.
+  - **Stage `backend`**: instala sólo dependencias productivas del backend con `npm ci --omit=dev`, copia `server/`, `routes/`, `db/`, `etl/`, `config/` y el `README.md`, y finalmente copia los archivos estáticos del stage previo hacia `frontend/dist`.
+- Se estableció `WORKDIR /usr/src/app` para el stage final y se expuso el puerto `3000`, alineado con `API_PORT`.
+- El `CMD` quedó en `npm start`, el cual invoca `server/bootstrap.js` para realizar comprobaciones y arrancar la API.
 
-Elegimos mantener todo en JavaScript para reducir el tiempo de onboarding del equipo y permitir que tanto el servidor como los scripts ETL compartan dependencias.
+## 3. Integración del frontend en la imagen
+- Express sirve el contenido precompilado desde `frontend/dist` (ver `server/index.js`), lo que permite que la misma imagen atienda las rutas API y los assets estáticos.
+- El cliente HTTP (`frontend/src/services/apiClient.js`) resuelve la URL base usando `VITE_API_BASE_URL`, el modo `DEV` o el `window.location.origin`, lo que facilita apuntar al backend dentro o fuera de Docker.
+- Los componentes principales (`ProductTable.jsx`, `CategoryCards.jsx`, `CategoryDonutChart.jsx`) realizan peticiones reales a `/products` y `/products/categories`, comprobando que el dashboard consume datos persistidos en MySQL y no mocks en memoria.
 
-## Preparación del repositorio
-- Se actualizó `package.json` con scripts (`npm start`, `npm run etl`, `npm run start:with-etl`) para facilitar ejecuciones locales y dentro de contenedores.
-- Se creó `.env.example` inventariando todas las variables necesarias: credenciales de MySQL, puertos por entorno, usuario de Docker Hub y parámetros de espera para la base.
-- `README.md` documenta el estado inicial, instrucciones de build, publicación y uso de docker-compose para QA/PROD.
+## 4. Orquestación con Docker Compose
+- `docker-compose.yml` crea un servicio de base de datos (`mysql:8.0`) y dos instancias de la API (`app-qa`, `app-prod`) reutilizando la misma imagen `mini-bi-app:v1.0`.
+- Se centralizó la configuración común mediante anclas (`x-app-image`, `x-app-environment`) para evitar duplicación de variables (`API_PORT`, `RUN_ETL_ON_BOOT`, `DB_HOST`, etc.).
+- Cada servicio API publica un puerto distinto (`3001` para QA, `3002` para PROD) y se conectan a la base mediante el hostname `database` provisto por Docker Compose.
+- Se montó `./db/init` como volumen de solo lectura para inicializar los esquemas (`dashboard_qa`, `dashboard_prod`).
+- `depends_on` con la condición `service_healthy` garantiza que el backend sólo arranque cuando MySQL responde al `healthcheck` (`mysqladmin ping`).
 
-## Imagen base y Dockerfile
-Utilizamos `node:20-alpine` por ser una versión estable, con soporte LTS y footprint reducido (~80 MB). Esto permite correr Express y Knex sin instalar dependencias extra. El Dockerfile tiene dos etapas:
-1. **deps:** ejecuta `npm ci --omit=dev` para instalar dependencias reproducibles de producción.
-2. **final:** copia código fuente, dependencias y define el comando `node scripts/startWithEtl.js`.
+## 5. Gestión de variables de entorno y configuración
+- `config/env.js` replica la funcionalidad básica de `dotenv` respetando la bandera `SKIP_DOTENV`, lo cual permite cargar `.env` en desarrollo pero omitirlo dentro del contenedor.
+- Se estandarizaron variables como `APP_ENV`, `LOG_LEVEL`, `DB_NAME`, `RUN_ETL_ON_BOOT`, `FAIL_ON_ETL_ERROR` para parametrizar el comportamiento de QA/PROD sin reconstruir imágenes.
+- El endpoint `/config` expone información operacional (entorno, nivel de logs, ejecución del ETL) para facilitar diagnósticos post-deploy.
 
-Justificación de instrucciones principales:
-- `WORKDIR /app`: estandariza la ruta de ejecución para scripts y comandos.
-- `COPY package*.json` + `npm ci`: aprovecha la caché de Docker, reinstalando dependencias solo cuando cambian los manifests.
-- `COPY server/ routes/ db/ etl/ scripts/`: añade únicamente el código requerido en tiempo de ejecución.
-- `CMD node scripts/startWithEtl.js`: lanza un orquestador que espera la base, ejecuta el ETL (opcional según `SKIP_ETL`) y finalmente inicia Express.
+## 6. Inicialización y robustez del backend
+- `server/bootstrap.js` valida la conexión MySQL con reintentos antes de levantar Express, reduciendo fallos en escenarios donde la base demora en iniciar.
+- Antes de servir peticiones se ejecuta condicionalmente el ETL (`RUN_ETL_ON_BOOT='true'`) y se permite abortar (`FAIL_ON_ETL_ERROR='true'`) si la carga falla.
+- `server/index.js` habilita CORS, expone `/health` y loggea en consola con distintos niveles configurables, lo que ayuda a monitorear las instancias containerizadas.
 
-## Base de datos y persistencia
-Se optó por **MySQL 8.4** porque el proyecto ya usaba `mysql2` y la sintaxis SQL es compatible con el ETL existente. Se define un volumen nombrado `db_data` que apunta a `/var/lib/mysql` para asegurar que los datos sobreviven reinicios y recreaciones de contenedores. Un script `docker/mysql/init.sql` crea las bases `mini_bi_qa` y `mini_bi_prod` automáticamente.
+## 7. Pipeline ETL y persistencia de datos
+- `etl/fetchAndLoad.js` consume la API pública `https://fakestoreapi.com/products`, transforma los registros y los inserta en la tabla `products`, asegurando que la información presentada sea real y fresca.
+- El script crea la tabla `products` en caso de no existir y limpia los datos previos antes de insertar, garantizando idempotencia entre reinicios.
+- `db/connection.js` utiliza `mysql2` y lee las credenciales desde el entorno, permitiendo apuntar a distintas bases con la misma imagen.
+- `db/init/01-init.sql` prepara los esquemas `dashboard_qa` y `dashboard_prod`; el volumen `mysql_data` conserva la data entre corridas.
 
-## Variables de entorno y diferenciación QA/PROD
-La misma imagen se ejecuta dos veces con configuraciones distintas:
+## 8. Estrategia de imágenes y despliegue
+- Se acordó etiquetar la imagen como `mini-bi-app:v1.0` (más alias como `qa`/`prod` si se publica en un registry) para alinear pipelines automatizados.
+- El flujo recomendado es: `docker compose build`, `docker compose up` para validar, y luego `docker push` con las etiquetas definitivas.
+- Documentar los puertos expuestos en host (`3307`, `3001`, `3002`) evita conflictos con otros servicios locales durante pruebas.
 
-| Variable        | QA                                  | PROD                                      | Propósito |
-| --------------- | ----------------------------------- | ----------------------------------------- | --------- |
-| `APP_ENV`       | `qa`                                | `prod`                                    | Flag de entorno para logs/diagnóstico |
-| `API_PORT`      | `QA_API_PORT` (por defecto 3000)    | `PROD_API_PORT` (por defecto 3000)        | Puerto interno de Express |
-| `DB_NAME`       | `mini_bi_qa`                        | `mini_bi_prod`                            | Aislar datasets |
-| `LOG_LEVEL`     | `debug`                             | `warn`                                    | Ejemplo de parametrización de logging |
-| `SKIP_ETL`      | no definido → se ejecuta ETL        | `true`                                    | En PROD evitamos sobreescribir datos |
-
-Los parámetros comunes (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`) se definen una única vez mediante anclas de YAML. `scripts/waitForDb.js` reutiliza estas variables para esperar hasta que la base responda antes de correr el ETL.
-
-## Orquestación con docker-compose
-`docker-compose.yml` levanta tres servicios:
-1. `db`: contenedor MySQL con volumen persistente y script de inicialización.
-2. `app-qa`: instancia de la imagen `mini-bi` etiquetada como `v1.0`, expuesta en el puerto 3001.
-3. `app-prod`: segunda instancia de la misma imagen `v1.0`, expuesta en el puerto 3002.
-
-Ambas apps dependen de la salud de la base (`depends_on.condition: service_healthy`) y comparten el volumen de datos, demostrando persistencia entre reinicios. Se documentó en el README cómo ejecutar `docker compose up -d --build` para reproducir el entorno en cualquier máquina.
-
-## Estrategia de versionado y publicación
-- Tag `dev`: builds locales frecuentes utilizados para validar cambios antes de promoverlos.
-- Tag `v1.0`: primera versión estable preparada para despliegues. `docker-compose.yml` referencia explícitamente `v1.0` para asegurar que QA y PROD corren la misma build.
-- Futuras promociones seguirán semántica `vMAJOR.MINOR` y se documentarán en Docker Hub. La publicación se realiza con `docker push` tras `docker login`.
-
-## Evidencias y pruebas recomendadas
-Para la entrega final se sugieren capturas/logs de:
-- `docker compose ps` mostrando los tres servicios arriba.
-- Respuestas exitosas de `GET /products` en QA y PROD.
-- Ejecución del ETL (`docker compose logs app-qa`) y verificación de persistencia (`SELECT COUNT(*) FROM products`).
-
-## Problemas y soluciones
-- **Sincronización con la base:** el ETL fallaba si MySQL no estaba listo. Se añadió `scripts/waitForDb.js` y el orquestador `startWithEtl.js` para reintentar la conexión antes de cargar datos.
-- **Datos en PROD:** para evitar que el ETL limpie tablas en producción, se introdujo la variable `SKIP_ETL=true` en `app-prod`. Si se necesita inicializar datos se ejecuta `npm run etl` manualmente desde el contenedor.
-- **Repositorio remoto desactualizado:** se actualizó la metadata de `package.json` para apuntar al nuevo repositorio (`https://github.com/tu-usuario/Proyecto-Docker-Inge-III`).
+## 9. Consideraciones adicionales
+- No se empaquetan artefactos de pruebas ni dependencias de desarrollo, lo que reduce la superficie de ataque y el peso de la imagen.
+- Se recomienda no ejecutar `docker compose down -v` en entornos de QA si se desea preservar el dataset persistido por el ETL.
+- Los logs diferenciados por `APP_ENV` permiten auditar desde qué entorno provienen los mensajes cuando múltiples contenedores comparten el mismo host.

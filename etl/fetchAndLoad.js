@@ -3,6 +3,7 @@ const db = require('../db/connection');
 
 async function runETL() {
   try {
+    // 1. Crear la tabla si no existe
     const exists = await db.schema.hasTable('products');
     if (!exists) {
       await db.schema.createTable('products', (table) => {
@@ -17,10 +18,12 @@ async function runETL() {
       console.log('✅ Tabla creada');
     }
 
+    // 2. Extraer los datos
     const response = await axios.get('https://fakestoreapi.com/products');
     const rawData = response.data;
 
-    const transformed = rawData.map((p) => ({
+    // 3. Transformar los datos
+    const transformed = rawData.map(p => ({
       title: p.title,
       price: Math.round(p.price * 100) / 100,
       category: p.category.trim().toLowerCase(),
@@ -28,22 +31,23 @@ async function runETL() {
       image: p.image,
     }));
 
-    await db('products').del();
+    // 4. Limpiar y cargar
+    await db('products').del(); // Opcional: limpiar antes de insertar
     await db('products').insert(transformed);
 
     console.log(`✅ ETL completado: se cargaron ${transformed.length} productos.`);
-  } finally {
-    await db.destroy();
+  } catch (err) {
+    console.error('❌ Error en ETL:', err);
+    throw err;
   }
 }
 
 if (require.main === module) {
   runETL()
     .then(() => process.exit(0))
-    .catch((error) => {
-      console.error('❌ Error en ETL:', error);
-      process.exit(1);
-    });
+    .catch(() => process.exit(1));
 }
 
-module.exports = { runETL };
+module.exports = {
+  runETL,
+};
