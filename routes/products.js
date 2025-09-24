@@ -8,13 +8,7 @@ router.get('/', async (req, res) => {
     const products = await db.select('*').from('products');
     res.json(products);
   } catch (err) {
-    console.error('Error al obtener productos:', {
-      message: err.message,
-      code: err.code,
-      errno: err.errno,
-      sqlState: err.sqlState,
-      sqlMessage: err.sqlMessage
-    });
+    console.error('Error al obtener productos:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
@@ -29,13 +23,7 @@ router.get('/categories', async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    console.error('Error al obtener productos:', {
-      message: err.message,
-      code: err.code,
-      errno: err.errno,
-      sqlState: err.sqlState,
-      sqlMessage: err.sqlMessage
-    });
+    console.error('Error al obtener resumen de categorías:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
@@ -56,6 +44,22 @@ router.get('/price-by-category', async (req, res) => {
 });
 
 
+// 🟢 GET /products/:id → producto por ID
+router.get('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const product = await db('products').where({ id }).first();
+    if (product) {
+      res.json(product);
+    } else {
+      res.status(404).json({ error: 'Producto no encontrado' });
+    }
+  } catch (err) {
+    console.error('Error al obtener producto:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 // 🟢 GET /products/categories/summary → total y porcentaje por categoría
 router.get('/categories/summary', async (req, res) => {
   try {
@@ -75,27 +79,6 @@ router.get('/categories/summary', async (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error('Error al obtener resumen de precios por categoría:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-});
-
-// 🟢 GET /products/:id → producto por ID
-router.get('/:id', async (req, res) => {
-  const id = Number(req.params.id);
-
-  if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ error: 'ID inválido' });
-  }
-
-  try {
-    const product = await db('products').where({ id }).first();
-    if (product) {
-      res.json(product);
-    } else {
-      res.status(404).json({ error: 'Producto no encontrado' });
-    }
-  } catch (err) {
-    console.error('Error al obtener producto:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
